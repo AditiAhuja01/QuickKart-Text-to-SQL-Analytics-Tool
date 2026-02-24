@@ -1,12 +1,12 @@
-# 🛒 QuickKart Analytics
+# QuickKart  Text-to-SQL Analytics Tool
 
-> Ask business questions in plain English. Get instant answers from your store's data.
+> A web application where retail store managers can ask business questions in plain English and get instant data results.
 
-A **Text-to-SQL** web application built for retail store managers who want data insights without knowing SQL. Powered by Llama 3 via Groq AI.
+A **Text-to-SQL** web application built for retail store managers who want data insights without knowing SQL. It uses **Groq API** and **LLaMA 3.3** to convert plain English questions into SQL queries, runs them on a **SQLite** database, and displays the results as a clean table instantly.
 
 ---
 
-## 🎯 What It Does
+##  What It Does
 
 Type a question like:
 
@@ -22,7 +22,20 @@ No SQL knowledge needed. No waiting for a data analyst.
 
 ---
 
-## ✨ Features
+##  UI
+
+### Home Page with some Suggested Questions
+![QuickKart Home](https://github.com/user-attachments/assets/1df59196-8865-42e6-88af-c478ed199178)
+
+### Query Result with SQL and English explaination
+![SQL Generated](https://github.com/user-attachments/assets/f2c262a1-994a-40a1-8542-d53172b66a89)
+
+###  Schema Explorer and Query History panel 
+![SQL Explanation](https://github.com/user-attachments/assets/e1cb824d-f4a6-4589-9885-1c76a4d82608)
+
+---
+
+##  Features
 
 | Feature | Description |
 |---|---|
@@ -34,9 +47,9 @@ No SQL knowledge needed. No waiting for a data analyst.
 
 ---
 
-## 🗃️ Database Schema
+##  Database Schema
 
-QuickKart uses a realistic retail supermarket database with **10 tables**.
+QuickKart uses a realistic retail supermarket database with **10 tables** and 500+ rows of synthetic Indian retail data.
 
 ### Entity Relationship Overview
 
@@ -55,7 +68,7 @@ customers ──────< orders >──────── employees (cashie
 ---
 
 ### Table 1: `customers`
-People who shop at QuickKart (via loyalty program / app / WhatsApp billing).
+People who shop at QuickKart via loyalty program / app / WhatsApp billing.
 
 | Column | Type | Description |
 |---|---|---|
@@ -81,7 +94,7 @@ Product groupings used to organize the store's inventory.
 | name | VARCHAR | e.g. Dairy, Beverages, Snacks |
 | description | TEXT | What products belong here |
 
-**Categories in QuickKart:** Dairy, Beverages, Snacks, Grains & Pulses, Personal Care, Household, Frozen Foods, Electronics
+> Categories: Dairy · Beverages · Snacks · Grains & Pulses · Personal Care · Household · Frozen Foods · Electronics
 
 ---
 
@@ -126,7 +139,7 @@ Every product sold at QuickKart.
 | cost_price | DECIMAL | Purchase/wholesale price |
 | unit | VARCHAR | kg / piece / litre / pack |
 
-> 💡 `price - cost_price` = profit. `(price - cost_price) / price * 100` = profit margin %
+>  `price - cost_price = profit` · `(price - cost_price) / price * 100 = profit margin %`
 
 ---
 
@@ -142,7 +155,7 @@ Current stock levels for each product.
 | reorder_level | INTEGER | Minimum threshold — below this = reorder needed |
 | last_restocked | DATE | When stock was last replenished |
 
-> 💡 `quantity_in_stock <= reorder_level` means the product needs restocking.
+>  `quantity_in_stock <= reorder_level` means the product needs restocking.
 
 ---
 
@@ -187,7 +200,7 @@ Promotional campaigns and sale events.
 | start_date | DATE | When the offer starts |
 | end_date | DATE | When the offer ends |
 
-> 💡 Active discounts: `CURRENT_DATE BETWEEN start_date AND end_date`
+>  Active discounts: `CURRENT_DATE BETWEEN start_date AND end_date`
 
 ---
 
@@ -212,153 +225,51 @@ Stores every question asked through the app.
 |---|---|---|
 | id | SERIAL PK | Unique ID |
 | question | TEXT | The plain English question |
-| sql_query | TEXT | The SQL Gemini generated |
+| sql_query | TEXT | The SQL the AI generated |
 | result_count | INTEGER | How many rows were returned |
 | created_at | TIMESTAMP | When it was asked |
 
 ---
 
-## 🔧 Tech Stack
+##  Sample Questions to Try
+
+```
+Which products are below reorder level?
+Show me top 10 customers by loyalty points
+What was total revenue this month?
+Which cashier processed the most orders?
+Which products were returned the most?
+Which city has the most customers?
+Show me all active discounts
+What is the profit margin for each product?
+```
+
+---
+
+##  Tech Stack
 
 | Layer | Technology |
 |---|---|
-| Frontend | React 18 |
-| Backend | FastAPI (Python) |
-| Database | SQLite |
-| AI | Llama 3 via Groq (free tier) |
-| Styling | Custom CSS |
+| **Frontend** | React |
+| **Backend** | Python, FastAPI |
+| **Database** | SQLite |
+| **AI** | Groq API (LLaMA 3.3) |
 
 ---
 
-## 🚀 Local Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- SQLite (included with Python)
-- Free Groq API key from [console.groq.com](https://console.groq.com/keys)
-
----
-
-### Step 1: Clone and set up database
-
-```bash
-cd backend
-# Run setup script (creates quickkart.db + sample data)
-python setup_db.py
-```
-
----
-
-### Step 2: Backend setup
-
-```bash
-cd backend
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Copy env file and fill in your values
-cp .env.example .env
-# Edit .env: add your GROQ_API_KEY
-
-# Start the server
-uvicorn main:app --reload
-# Backend runs at http://localhost:8000
-```
-
----
-
-### Step 3: Frontend setup
-
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the dev server
-npm start
-# Frontend runs at http://localhost:3000
-```
-
----
-
-### Step 4: Open the app
-
-Go to **http://localhost:3000** and ask your first question!
-
----
-
-## 💡 Sample Questions to Try
-
-```
-Show me top 10 customers by loyalty points
-Which products are below reorder level?
-What was total revenue this month?
-Which cashier processed the most orders?
-Show me all active discounts
-Which products were returned the most?
-What is the profit margin for each product?
-Which supplier has the lowest rating?
-Which city has the most customers?
-Which age group spends the most money?
-Show me all orders paid by UPI this month
-Who are customers who haven't ordered in 60 days?
-```
-
----
-
-## 🌐 Deployment
-
-### Deploy Backend to Render
-1. Push code to GitHub
-2. Create new **Web Service** on [render.com](https://render.com)
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables (GEMINI_API_KEY, DB_HOST, etc.)
-6. Add a **PostgreSQL** database on Render and connect it
-
-### Deploy Frontend to Vercel
-1. Create new project on [vercel.com](https://vercel.com)
-2. Connect your GitHub repo, select `frontend` as root
-3. Add environment variable: `REACT_APP_API_URL=https://your-render-url.onrender.com`
-4. Deploy!
-
----
-
-## 📁 Project Structure
+##  Project Structure
 
 ```
 quickkart/
 ├── backend/
-│   ├── main.py          ← FastAPI routes (/ask, /explain, /history, /schema, /suggestions)
-│   ├── database.py      ← PostgreSQL connection + query runner
-│   ├── gemini.py        ← Groq AI calls (text→SQL, SQL→explanation)
-│   ├── schema.py        ← DB schema context sent to Gemini
-│   ├── .env.example     ← Environment variable template
-│   └── requirements.txt
-│
+│   ├── main.py         ← API routes
+│   ├── database.py     ← SQLite connection
+│   ├── gemini.py       ← Groq AI integration
+│   ├── schema.py       ← DB context for AI
+│   └── setup_db.py     ← Creates tables + sample data
 ├── frontend/
-│   ├── src/
-│   │   ├── App.jsx               ← Root component, state management
-│   │   ├── App.css               ← All styles
-│   │   ├── api.js                ← All fetch calls to backend
-│   │   └── components/
-│   │       ├── SearchBar.jsx     ← Question input
-│   │       ├── ResultsTable.jsx  ← Query results display
-│   │       ├── SQLExplainer.jsx  ← SQL + plain English explanation
-│   │       ├── History.jsx       ← Query history sidebar
-│   │       ├── Suggestions.jsx   ← Starter question chips
-│   │       └── SchemaExplorer.jsx← Database schema side panel
-│   └── package.json
-│
-└── database/
-    └── setup.sql         ← All 10 tables + realistic Indian retail sample data
+│   └── src/
+│       ├── App.jsx
+│       └── components/ ← SearchBar, Results, History, etc.
+└── README.md
 ```
-
----
-
-## 👨‍💻 Built By
-
-MCA project — QuickKart Analytics demonstrates full-stack development with AI integration for real-world retail analytics use cases.
