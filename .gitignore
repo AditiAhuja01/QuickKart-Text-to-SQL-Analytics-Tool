@@ -1,0 +1,14 @@
+# Backend
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+*.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/build/
+frontend/.env.local
+
+# General
+.DS_Store
+*.log
