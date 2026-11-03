@@ -6,7 +6,7 @@ from ai_service import generate_sql, explain_sql, retry_fix_sql
 import re
 import sqlite3
 
-# ── App setup ──────────────────────────────────────────────
+# App setup
 app = FastAPI(title="QuickKart Analytics API", version="1.0.0")
 
 app.add_middleware(
@@ -21,34 +21,43 @@ app.add_middleware(
 def startup():
     create_history_table()
 
-# ── Request Models ─────────────────────────────────────────
+# Request Models
 class AskRequest(BaseModel):
     question: str
 
 class ExplainRequest(BaseModel):
     sql: str
 
-# ── Routes ─────────────────────────────────────────────────
+# Routes
 
 @app.get("/")
 def root():
-    return {"message": "QuickKart Analytics API is running "}
+    return {"message": "QuickKart Analytics API is running"}
 
 
 def validate_sql_safety(sql: str):
-    """Enforces strict SQL security guardrails."""
+    """
+    Enforces strict SQL security guardrails before running any query.
+    Blocks multiple statements, and any command other than SELECT.
+    """
     clean_sql = sql.strip().rstrip(";")
+
+    # Block multiple statements joined by semicolons (e.g. SELECT ...; DROP TABLE ...)
     if ";" in clean_sql:
         raise HTTPException(
             status_code=400,
             detail="Security error: Multiple SQL statements are not permitted."
         )
+
+    # Only allow SELECT statements
     first_token = clean_sql.split()[0].upper() if clean_sql.split() else ""
     if first_token != "SELECT":
         raise HTTPException(
             status_code=400,
             detail="Security error: Only read-only SELECT queries are allowed."
         )
+
+    # Block known data modification commands even if they appear mid-query
     forbidden_tokens = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "PRAGMA", "ATTACH"]
     for token in forbidden_tokens:
         if re.search(rf"\b{token}\b", clean_sql, re.IGNORECASE):
@@ -57,34 +66,37 @@ def validate_sql_safety(sql: str):
                 detail=f"Security error: Modification command '{token}' is blocked."
             )
 
+
 @app.post("/ask")
 def ask(req: AskRequest):
     """
-    Main route: takes plain English → returns SQL, business assumption, and query results.
+    Main route: takes a plain English question and returns SQL, assumption, and results.
+
     Steps:
-      1. Send question to AI engine → get SQL + assumption
-      2. Validate safety guardrails (single SELECT statement, no mutations)
-      3. Run SQL on read-only database engine (with 1-attempt self-healing retry)
-      4. Save execution audit log to query_history
-      5. Return results to frontend
+      1. Send the question to the AI model to get SQL and a business assumption.
+      2. Validate the SQL for safety (single SELECT only, no mutation commands).
+      3. Run the SQL on a read-only database connection.
+         If it fails, retry once with a self-healing model call.
+      4. Save the question and SQL to the audit log (query_history table).
+      5. Return the results to the frontend.
     """
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    # Step 1: Generate SQL and Business Assumption
+    # Step 1: Ask the AI model to generate SQL and a business assumption
     try:
         sql, assumption = generate_sql(req.question)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI generation error: {str(e)}")
 
-    # Step 2: Validate safety
+    # Step 2: Check the generated SQL is safe before running it
     validate_sql_safety(sql)
 
-    # Step 3: Run SQL with 1-attempt self-healing error recovery
+    # Step 3: Run the SQL — retry once if it fails
     try:
         result = run_query(sql)
     except Exception as first_err:
-        # Retry once with self-healing model
+        # Send the error back to the model and let it fix the SQL (one attempt only)
         try:
             fixed_sql = retry_fix_sql(req.question, sql, str(first_err))
             validate_sql_safety(fixed_sql)
@@ -96,11 +108,11 @@ def ask(req: AskRequest):
                 detail="Could not execute query for this question. Please try rephrasing."
             )
 
-    # Step 4: Save audit history
+    # Step 4: Save to audit log — failure here should not block the user response
     try:
         save_query_history(req.question, sql, result["count"])
     except Exception:
-        pass  # Audit logging failure should not block the user request
+        pass
 
     # Step 5: Return to frontend
     return {
@@ -116,8 +128,8 @@ def ask(req: AskRequest):
 @app.post("/explain")
 def explain(req: ExplainRequest):
     """
-    Takes a SQL query → returns plain English explanation.
-    Used when user clicks 'What does this mean?' on the SQL explainer panel.
+    Takes a SQL query and returns a plain English explanation.
+    Used when the user clicks 'What does this mean?' in the SQL panel.
     """
     if not req.sql.strip():
         raise HTTPException(status_code=400, detail="SQL cannot be empty")
@@ -133,8 +145,8 @@ def explain(req: ExplainRequest):
 @app.get("/history")
 def history():
     """
-    Returns last 20 queries from query_history table.
-    Used to populate the History sidebar on the frontend.
+    Returns the last 20 queries from query_history.
+    Used to populate the History sidebar panel on the frontend.
     """
     try:
         records = get_history(limit=20)
@@ -145,7 +157,7 @@ def history():
 
 @app.delete("/history")
 def clear_history():
-    """Clear all query history."""
+    """Clear all query history records."""
     from database import get_connection
     conn = get_connection()
     try:
@@ -161,7 +173,7 @@ def clear_history():
 def suggestions():
     """
     Returns pre-built suggested questions for the store manager.
-    Shown as clickable chips on the frontend.
+    Shown as clickable chips on the frontend home screen.
     """
     return {
         "suggestions": [
@@ -169,7 +181,7 @@ def suggestions():
             "Which products are below reorder level?",
             "What was total revenue this month?",
             "Which product category generates the most sales?",
-            "Who are the customers who haven't ordered in 60 days?",
+            "Who are the customers who have not ordered in 60 days?",
             "Which cashier processed the most orders?",
             "Show me all active discounts",
             "Which products were returned the most?",
@@ -187,7 +199,8 @@ def suggestions():
 @app.get("/schema")
 def schema():
     """
-    Returns schema info for display in the frontend Schema Explorer.
+    Returns table names, descriptions, and column lists.
+    Used by the Schema Explorer panel on the frontend.
     """
     return {
         "tables": [
@@ -208,7 +221,7 @@ def schema():
             },
             {
                 "name": "employees",
-                "description": "Store staff — cashiers, managers, stock boys",
+                "description": "Store staff: cashiers, managers, stock boys",
                 "columns": ["employee_id", "name", "role", "salary", "joining_date", "shift"]
             },
             {

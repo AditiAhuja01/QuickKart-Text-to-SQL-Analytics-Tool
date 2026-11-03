@@ -14,6 +14,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [historyRefresh, setHistoryRefresh] = useState(0);
 
+  // This runs only when the user submits a question.
+  // It does NOT run on page load — so the page is never blank on load.
   const handleSearch = async (question) => {
     setLoading(true);
     setError("");
@@ -22,8 +24,9 @@ export default function App() {
     try {
       const data = await askQuestion(question);
       setResult(data);
-      setHistoryRefresh((n) => n + 1); // trigger history reload
+      setHistoryRefresh((n) => n + 1); // trigger history panel reload
     } catch (err) {
+      // Only show an error if the user actually submitted something
       setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -32,7 +35,7 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* ── Header ─────────────────────────────────── */}
+      {/* Header */}
       <header className="header">
         <div className="header-inner">
           <div className="logo">
@@ -47,13 +50,13 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Main ───────────────────────────────────── */}
+      {/* Main */}
       <main className="main">
 
         {/* Search bar */}
         <SearchBar onSearch={handleSearch} loading={loading} />
 
-        {/* Loading state */}
+        {/* Loading indicator */}
         {loading && (
           <div className="loading-state">
             <div className="loading-dots">
@@ -63,7 +66,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Error state */}
+        {/* Error message — only shows after a failed user query */}
         {error && (
           <div className="error-box">
             <span></span>
@@ -71,7 +74,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Results */}
+        {/* Results — only shows after a successful user query */}
         {result && !loading && (
           <>
             <SQLExplainer sql={result.sql} />
@@ -79,14 +82,14 @@ export default function App() {
           </>
         )}
 
-        {/* Suggestions — shown when no result yet */}
+        {/* Suggested questions — shown when no result and no error yet */}
         {!result && !loading && !error && (
           <Suggestions onSelect={handleSearch} />
         )}
 
       </main>
 
-      {/* ── Floating Panels ────────────────────────── */}
+      {/* Floating side panels — always visible, load independently */}
       <History onSelect={handleSearch} refreshTrigger={historyRefresh} />
       <SchemaExplorer />
     </div>
