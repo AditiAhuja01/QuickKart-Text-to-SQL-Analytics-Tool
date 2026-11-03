@@ -11,12 +11,16 @@ export default function ResultsTable({ data }) {
         <div>
           <p className="results-question">"{question}"</p>
           <p className="results-count">{count} row{count !== 1 ? "s" : ""} returned</p>
+          {data.assumption && (
+            <p className="results-assumption" style={{ fontSize: "0.85rem", color: "#64748B", marginTop: "4px" }}>
+              <span style={{ fontWeight: 600, color: "#0F172A" }}>Assumption:</span> {data.assumption}
+            </p>
+          )}
         </div>
       </div>
 
       {rows.length === 0 ? (
         <div className="no-results">
-          <span>🔍</span>
           <p>No results found for this query.</p>
         </div>
       ) : (

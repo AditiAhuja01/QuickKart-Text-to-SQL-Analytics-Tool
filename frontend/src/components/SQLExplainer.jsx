@@ -35,7 +35,7 @@ export default function SQLExplainer({ sql }) {
   return (
     <div className="explainer-section">
       <div className="explainer-header">
-        <span className="explainer-title">🔍 SQL Generated</span>
+        <span className="explainer-title"> SQL Generated</span>
         <div className="explainer-actions">
           <button className="explainer-btn" onClick={handleCopy}>
             {copied ? "✓ Copied!" : "Copy SQL"}

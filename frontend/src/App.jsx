@@ -66,7 +66,7 @@ export default function App() {
         {/* Error state */}
         {error && (
           <div className="error-box">
-            <span>⚠️</span>
+            <span></span>
             <p>{error}</p>
           </div>
         )}

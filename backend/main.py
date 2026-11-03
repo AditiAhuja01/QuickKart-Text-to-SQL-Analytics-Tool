@@ -2,7 +2,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from database import run_query, save_query_history, get_history, create_history_table
-from gemini import generate_sql, explain_sql
+from ai_service import generate_sql, explain_sql, retry_fix_sql
+import re
 import sqlite3
 
 # ── App setup ──────────────────────────────────────────────
@@ -31,52 +32,81 @@ class ExplainRequest(BaseModel):
 
 @app.get("/")
 def root():
-    return {"message": "QuickKart Analytics API is running ✅"}
+    return {"message": "QuickKart Analytics API is running "}
 
+
+def validate_sql_safety(sql: str):
+    """Enforces strict SQL security guardrails."""
+    clean_sql = sql.strip().rstrip(";")
+    if ";" in clean_sql:
+        raise HTTPException(
+            status_code=400,
+            detail="Security error: Multiple SQL statements are not permitted."
+        )
+    first_token = clean_sql.split()[0].upper() if clean_sql.split() else ""
+    if first_token != "SELECT":
+        raise HTTPException(
+            status_code=400,
+            detail="Security error: Only read-only SELECT queries are allowed."
+        )
+    forbidden_tokens = ["DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "PRAGMA", "ATTACH"]
+    for token in forbidden_tokens:
+        if re.search(rf"\b{token}\b", clean_sql, re.IGNORECASE):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Security error: Modification command '{token}' is blocked."
+            )
 
 @app.post("/ask")
 def ask(req: AskRequest):
     """
-    Main route: takes plain English → returns SQL + query results.
+    Main route: takes plain English → returns SQL, business assumption, and query results.
     Steps:
-      1. Send question to Gemini → get SQL
-      2. Validate it's a SELECT query (safety)
-      3. Run SQL on PostgreSQL
-      4. Save to history
-      5. Return everything to frontend
+      1. Send question to AI engine → get SQL + assumption
+      2. Validate safety guardrails (single SELECT statement, no mutations)
+      3. Run SQL on read-only database engine (with 1-attempt self-healing retry)
+      4. Save execution audit log to query_history
+      5. Return results to frontend
     """
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
-    # Step 1: Generate SQL
+    # Step 1: Generate SQL and Business Assumption
     try:
-        sql = generate_sql(req.question)
+        sql, assumption = generate_sql(req.question)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"AI error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"AI generation error: {str(e)}")
 
-    # Step 2: Safety check — only allow SELECT
-    if not sql.strip().upper().startswith("SELECT"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only SELECT queries are allowed. Please ask a data question."
-        )
+    # Step 2: Validate safety
+    validate_sql_safety(sql)
 
-    # Step 3: Run SQL
+    # Step 3: Run SQL with 1-attempt self-healing error recovery
     try:
         result = run_query(sql)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as first_err:
+        # Retry once with self-healing model
+        try:
+            fixed_sql = retry_fix_sql(req.question, sql, str(first_err))
+            validate_sql_safety(fixed_sql)
+            result = run_query(fixed_sql)
+            sql = fixed_sql
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Could not execute query for this question. Please try rephrasing."
+            )
 
-    # Step 4: Save to history
+    # Step 4: Save audit history
     try:
         save_query_history(req.question, sql, result["count"])
     except Exception:
-        pass  # History saving failure should not crash the main request
+        pass  # Audit logging failure should not block the user request
 
     # Step 5: Return to frontend
     return {
         "question": req.question,
         "sql": sql,
+        "assumption": assumption,
         "columns": result["columns"],
         "rows": result["rows"],
         "count": result["count"],

@@ -1,364 +1,171 @@
-# 🛒 QuickKart Analytics
+# QuickKart Analytics
 
-> Ask business questions in plain English. Get instant answers from your store's data.
-
-A **Text-to-SQL** web application built for retail store managers who want data insights without knowing SQL. Powered by Llama 3 via Groq AI.
+A self-serve Text-to-SQL analytics platform that translates natural language business questions into validated SQL queries against an indexed retail database schema, providing store managers with immediate operational answers and query explanations.
 
 ---
 
-## 🎯 What It Does
+## 1. Business Problem & Product Context
 
-Type a question like:
+### The Operational Bottleneck
+In supermarket and retail chain operations, store managers and inventory leads require fast answers to daily business questions:
+* Identifying products falling below warehouse reorder thresholds.
+* Reviewing customer return volumes and refund losses across categories.
+* Auditing cashier transaction counts and peak checkout times.
 
-> *"Which products are below reorder level?"*
+Traditionally, non-technical operational staff rely on central Data Engineering or BI teams to write ad-hoc SQL reports, creating a 2- to 3-day turnaround bottleneck for routine operational decisions.
 
-The app:
-1. Sends your question to **Groq AI**
-2. Groq writes the correct **SQL query** for your database
-3. SQL runs on **SQLite**
-4. Results appear as a table on screen
-
-No SQL knowledge needed. No waiting for a data analyst.
-
----
-
-## ✨ Features
-
-| Feature | Description |
-|---|---|
-| **Natural Language Query** | Type plain English, get real database results |
-| **SQL Explainer** | Click "What does this mean?" to get a plain English explanation of the SQL that ran |
-| **Query History** | Every question you ask is saved — click any to re-run it |
-| **Schema Explorer** | See all 10 tables and their columns in a side panel |
-| **Suggested Questions** | 15 pre-built starter questions for common retail insights |
+### Product Objectives & Success Metrics
+* **Query Latency:** Reduce data inquiry turnaround from days to sub-second execution (<500ms).
+* **Self-Service Adoption:** Enable non-technical managers to query store data without SQL training.
+* **Interpretation Transparency:** Every AI query returns the executed SQL, an explanation, and a stated business assumption (e.g., whether "top customers" represents purchase count or total lifetime spend).
+* **Data Protection:** Enforce strict read-only execution guardrails to prevent accidental mutations or malicious data modifications.
 
 ---
 
-## 🗃️ Database Schema
+## 2. System Architecture & Data Flow
 
-QuickKart uses a realistic retail supermarket database with **10 tables**.
-
-### Entity Relationship Overview
-
-```
-customers ──────< orders >──────── employees (cashier)
-                    │
-                    └──< order_items >── products ──< categories
-                                             │
-                                         inventory >── suppliers
-                                             │
-                                         discounts
-                    │
-                    └──< returns >──── products
+```mermaid
+flowchart LR
+    A["Store Manager<br>(React Frontend)"] -->|Natural Language Question| B["FastAPI Backend<br>(/ask Endpoint)"]
+    B -->|Prompt + Schema Context| C["Groq AI Engine<br>(LLaMA 3.3 70B)"]
+    C -->|Generated SQL + Assumption| D["Security Guardrail<br>(Statement Validator)"]
+    D -->|Validated SELECT| E[("SQLite Engine<br>mode=ro")]
+    D -->|Blocked Unsafe Query| B
+    E -->|Result Rows| B
+    B -->|Save Audit Record| F[("query_history<br>Audit Table")]
+    B -->|Table + Explanation + Assumption| A
 ```
 
----
-
-### Table 1: `customers`
-People who shop at QuickKart (via loyalty program / app / WhatsApp billing).
-
-| Column | Type | Description |
-|---|---|---|
-| customer_id | SERIAL PK | Unique ID |
-| name | VARCHAR | Full name |
-| email | VARCHAR | Email address |
-| phone | VARCHAR | Mobile number |
-| city | VARCHAR | City of residence |
-| state | VARCHAR | State |
-| gender | VARCHAR | Male / Female |
-| age | INTEGER | Age in years |
-| signup_date | DATE | When they joined the loyalty program |
-| loyalty_points | INTEGER | Points accumulated from purchases |
+### Architectural Workflow
+1. **Schema Context Injection:** When a question is submitted, `backend/schema.py` injects the relational database structure, primary/foreign key relationships, and generation rules into the prompt.
+2. **SQL & Assumption Generation:** LLaMA 3.3 synthesizes a single `SELECT` query along with an explicit business assumption resolving potential semantic ambiguities.
+3. **Security Guardrail:** The backend validates that exactly one SQL statement is present, rejects data modification statements (`DROP`, `DELETE`, `UPDATE`, `INSERT`, `ALTER`, `PRAGMA`), and enforces a 500-row safety limit.
+4. **Read-Only Database Execution:** Analytical queries run over an isolated SQLite connection opened in physical read-only mode (`mode=ro`) with a query execution timeout.
+5. **Self-Healing Error Recovery:** If database execution encounters a syntax error, the backend routes the error message back to the model once to self-correct the query before failing safely.
+6. **Governance Audit Logging:** Executed questions, generated SQL queries, execution timestamps, and row counts are recorded in an audit table (`query_history`) on a separate write connection.
 
 ---
 
-### Table 2: `categories`
-Product groupings used to organize the store's inventory.
+## 3. Relational Database Schema (11 Tables)
 
-| Column | Type | Description |
-|---|---|---|
-| category_id | SERIAL PK | Unique ID |
-| name | VARCHAR | e.g. Dairy, Beverages, Snacks |
-| description | TEXT | What products belong here |
+QuickKart structures an Indian retail supermarket domain across 10 operational entity tables and 1 audit table:
 
-**Categories in QuickKart:** Dairy, Beverages, Snacks, Grains & Pulses, Personal Care, Household, Frozen Foods, Electronics
+### Entity Relationship Structure
+```
+customers ──────────< orders >────────── employees (cashier)
+                         │
+                         └──< order_items >── products ──< categories
+                                                 │
+                                             inventory >── suppliers
+                                                 │
+                                             discounts
+                         │
+                         └──< returns >────── products
 
----
+query_history (Dedicated Governance & Audit Table)
+```
 
-### Table 3: `suppliers`
-Companies that supply products to QuickKart.
+### Table Definitions
 
-| Column | Type | Description |
-|---|---|---|
-| supplier_id | SERIAL PK | Unique ID |
-| name | VARCHAR | Company name (e.g. Amul, PepsiCo) |
-| contact_person | VARCHAR | Name of account manager |
-| phone | VARCHAR | Contact number |
-| city | VARCHAR | Supplier's city |
-| rating | DECIMAL(2,1) | Reliability rating from 1.0 to 5.0 |
-
----
-
-### Table 4: `employees`
-Staff members at QuickKart — cashiers, managers, stock boys.
-
-| Column | Type | Description |
-|---|---|---|
-| employee_id | SERIAL PK | Unique ID |
-| name | VARCHAR | Full name |
-| role | VARCHAR | cashier / manager / stock_boy |
-| salary | DECIMAL | Monthly salary (INR) |
-| joining_date | DATE | When they joined |
-| shift | VARCHAR | morning / evening / night |
+| Table | Primary Key | Foreign Keys | Key Attributes | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **`customers`** | `customer_id` | - | `name`, `city`, `phone`, `loyalty_points` | Customer profiles and loyalty balances |
+| **`categories`** | `category_id` | - | `name`, `description` | Retail product classifications (Dairy, Snacks, etc.) |
+| **`suppliers`** | `supplier_id` | - | `name`, `city`, `rating` | Supplier directory and vendor quality ratings |
+| **`employees`** | `employee_id` | - | `name`, `role`, `salary`, `shift` | Staff members, cashiers, and store managers |
+| **`products`** | `product_id` | `category_id` | `name`, `brand`, `price`, `cost_price`, `unit` | Merchandise catalog, pricing, and cost |
+| **`inventory`** | `inventory_id` | `product_id`, `supplier_id` | `quantity_in_stock`, `reorder_level` | Stock tracking and replenishment thresholds |
+| **`orders`** | `order_id` | `customer_id`, `employee_id` | `order_date`, `total_amount`, `payment_method` | Transaction headers and checkout records |
+| **`order_items`** | `item_id` | `order_id`, `product_id` | `quantity`, `unit_price`, `subtotal` | Individual line-items per order |
+| **`discounts`** | `discount_id` | `product_id` | `label`, `discount_percent`, `start_date`, `end_date` | Active promotional pricing campaigns |
+| **`returns`** | `return_id` | `order_id`, `product_id` | `return_date`, `reason`, `refund_amount` | Returned items, reasons, and refund values |
+| **`query_history`** | `id` | - | `question`, `sql_query`, `result_count`, `created_at` | Audit trail for security and monitoring |
 
 ---
 
-### Table 5: `products`
-Every product sold at QuickKart.
+## 4. Security & Defensive Engineering
 
-| Column | Type | Description |
-|---|---|---|
-| product_id | SERIAL PK | Unique ID |
-| name | VARCHAR | Product name |
-| category_id | FK | Links to categories |
-| brand | VARCHAR | Brand name |
-| price | DECIMAL | Selling price (INR) |
-| cost_price | DECIMAL | Purchase/wholesale price |
-| unit | VARCHAR | kg / piece / litre / pack |
-
-> 💡 `price - cost_price` = profit. `(price - cost_price) / price * 100` = profit margin %
+1. **Physical Engine Isolation:** Queries run against SQLite using URI parameter `?mode=ro`. Even if input circumvents string inspection, the database engine physically rejects write operations with an `attempt to write a readonly database` error.
+2. **Statement Boundary Validation:** Input is validated to ensure exactly one statement exists; semicolon chaining (`SELECT ...; DROP TABLE ...`) is blocked with an HTTP 400 response.
+3. **Keyword Filtering:** Any statement containing mutation tokens (`DROP`, `DELETE`, `UPDATE`, `INSERT`, `ALTER`, `ATTACH`, `PRAGMA`) is rejected before execution.
+4. **Query Timeout & Row Capping:** Queries default to a maximum limit of 500 rows to prevent memory exhaustion, with a 5.0-second execution timeout.
+5. **Dual-Engine Failover:** Supports local SQLite execution out of the box, with automatic detection and failover to PostgreSQL when configured.
 
 ---
 
-### Table 6: `inventory`
-Current stock levels for each product.
+## 5. Verification & Unit Testing
 
-| Column | Type | Description |
-|---|---|---|
-| inventory_id | SERIAL PK | Unique ID |
-| product_id | FK | Links to products |
-| supplier_id | FK | Which supplier provides this |
-| quantity_in_stock | INTEGER | How many units currently in store |
-| reorder_level | INTEGER | Minimum threshold — below this = reorder needed |
-| last_restocked | DATE | When stock was last replenished |
-
-> 💡 `quantity_in_stock <= reorder_level` means the product needs restocking.
-
----
-
-### Table 7: `orders`
-Each customer purchase session at the checkout counter.
-
-| Column | Type | Description |
-|---|---|---|
-| order_id | SERIAL PK | Unique ID |
-| customer_id | FK | Which customer placed the order |
-| employee_id | FK | Which cashier processed it |
-| order_date | TIMESTAMP | Date and time of purchase |
-| total_amount | DECIMAL | Total bill amount (INR) |
-| discount_applied | DECIMAL | Discount amount given |
-| payment_method | VARCHAR | cash / upi / card / wallet |
-
----
-
-### Table 8: `order_items`
-Individual product lines within each order. One row per product per order.
-
-| Column | Type | Description |
-|---|---|---|
-| item_id | SERIAL PK | Unique ID |
-| order_id | FK | Which order this belongs to |
-| product_id | FK | Which product was bought |
-| quantity | INTEGER | How many units |
-| unit_price | DECIMAL | Price at time of purchase |
-| subtotal | DECIMAL | quantity × unit_price |
-
----
-
-### Table 9: `discounts`
-Promotional campaigns and sale events.
-
-| Column | Type | Description |
-|---|---|---|
-| discount_id | SERIAL PK | Unique ID |
-| product_id | FK | Which product is discounted |
-| label | VARCHAR | Campaign name (e.g. "Diwali Sale") |
-| discount_percent | DECIMAL | e.g. 15.00 = 15% off |
-| start_date | DATE | When the offer starts |
-| end_date | DATE | When the offer ends |
-
-> 💡 Active discounts: `CURRENT_DATE BETWEEN start_date AND end_date`
-
----
-
-### Table 10: `returns`
-Products returned by customers with reasons and refund amounts.
-
-| Column | Type | Description |
-|---|---|---|
-| return_id | SERIAL PK | Unique ID |
-| order_id | FK | The original order |
-| product_id | FK | Which product was returned |
-| return_date | DATE | When it was returned |
-| reason | VARCHAR | e.g. "Damaged", "Expired", "Wrong item" |
-| refund_amount | DECIMAL | How much was refunded (INR) |
-
----
-
-### Table 11: `query_history` *(auto-created by app)*
-Stores every question asked through the app.
-
-| Column | Type | Description |
-|---|---|---|
-| id | SERIAL PK | Unique ID |
-| question | TEXT | The plain English question |
-| sql_query | TEXT | The SQL Gemini generated |
-| result_count | INTEGER | How many rows were returned |
-| created_at | TIMESTAMP | When it was asked |
-
----
-
-## 🔧 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18 |
-| Backend | FastAPI (Python) |
-| Database | SQLite |
-| AI | Llama 3 via Groq (free tier) |
-| Styling | Custom CSS |
-
----
-
-## 🚀 Local Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- SQLite (included with Python)
-- Free Groq API key from [console.groq.com](https://console.groq.com/keys)
-
----
-
-### Step 1: Clone and set up database
+A test suite covers the SQL validator and database access boundaries:
 
 ```bash
-cd backend
-# Run setup script (creates quickkart.db + sample data)
-python setup_db.py
+# Run security test suite
+python tests/test_safety.py
 ```
+
+### Test Coverage
+* `test_valid_select_allowed`: Confirms standard multi-table SELECT queries execute cleanly.
+* `test_blocks_multiple_statements`: Validates rejection of semicolon-separated statement chains.
+* `test_blocks_drop_table`: Verifies rejection of table destruction commands.
+* `test_blocks_delete_statement`: Verifies rejection of row deletion statements.
+* `test_blocks_update_statement`: Verifies rejection of data mutation statements.
+* `test_readonly_connection_blocks_direct_writes`: Validates that SQLite's physical engine enforces write rejection on read-only connections.
 
 ---
 
-### Step 2: Backend setup
+## 6. Assumptions & Limitations
 
+* **Synthetic Data Volume:** The database contains ~500 realistic seed records modeled on Indian retail operations, ideal for query demonstration without multi-gigabyte storage overhead.
+* **Single-Schema Scope:** Prompt context is optimized for the retail store schema; cross-database federation or multi-tenant isolation is not implemented.
+* **LLM Semantic Ambiguity:** Natural language terms like "best" or "active" are inherently subjective. QuickKart addresses this by generating and displaying an explicit business assumption with every query.
+* **Authentication:** Designed as an internal operations tool prototype; role-based access control (RBAC) and user authentication should be introduced prior to production deployment.
+
+---
+
+## 7. How to Run Locally
+
+### Prerequisites
+* Python 3.10+
+* Node.js 16+ and npm
+
+### 1. Backend Setup
 ```bash
 cd backend
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy env file and fill in your values
+# Configure environment (optional: add your Groq API key)
 cp .env.example .env
-# Edit .env: add your GROQ_API_KEY
 
-# Start the server
-uvicorn main:app --reload
-# Backend runs at http://localhost:8000
+# Run database setup (creates quickkart.db with seed records)
+python setup_db.py
+
+# Start FastAPI server
+uvicorn main:app --reload --port 8000
 ```
+Backend API runs at: `http://localhost:8000`
 
----
-
-### Step 3: Frontend setup
-
+### 2. Frontend Setup
 ```bash
 cd frontend
 
-# Install dependencies
+# Install packages
 npm install
 
-# Start the dev server
+# Start React development server
 npm start
-# Frontend runs at http://localhost:3000
 ```
+Frontend application runs at: `http://localhost:3000`
 
 ---
 
-### Step 4: Open the app
+## 8. Summary of Engineering Improvements
 
-Go to **http://localhost:3000** and ask your first question!
-
----
-
-## 💡 Sample Questions to Try
-
-```
-Show me top 10 customers by loyalty points
-Which products are below reorder level?
-What was total revenue this month?
-Which cashier processed the most orders?
-Show me all active discounts
-Which products were returned the most?
-What is the profit margin for each product?
-Which supplier has the lowest rating?
-Which city has the most customers?
-Which age group spends the most money?
-Show me all orders paid by UPI this month
-Who are customers who haven't ordered in 60 days?
-```
-
----
-
-## 🌐 Deployment
-
-### Deploy Backend to Render
-1. Push code to GitHub
-2. Create new **Web Service** on [render.com](https://render.com)
-3. Set build command: `pip install -r requirements.txt`
-4. Set start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-5. Add environment variables (GEMINI_API_KEY, DB_HOST, etc.)
-6. Add a **PostgreSQL** database on Render and connect it
-
-### Deploy Frontend to Vercel
-1. Create new project on [vercel.com](https://vercel.com)
-2. Connect your GitHub repo, select `frontend` as root
-3. Add environment variable: `REACT_APP_API_URL=https://your-render-url.onrender.com`
-4. Deploy!
-
----
-
-## 📁 Project Structure
-
-```
-quickkart/
-├── backend/
-│   ├── main.py          ← FastAPI routes (/ask, /explain, /history, /schema, /suggestions)
-│   ├── database.py      ← PostgreSQL connection + query runner
-│   ├── gemini.py        ← Groq AI calls (text→SQL, SQL→explanation)
-│   ├── schema.py        ← DB schema context sent to Gemini
-│   ├── .env.example     ← Environment variable template
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── App.jsx               ← Root component, state management
-│   │   ├── App.css               ← All styles
-│   │   ├── api.js                ← All fetch calls to backend
-│   │   └── components/
-│   │       ├── SearchBar.jsx     ← Question input
-│   │       ├── ResultsTable.jsx  ← Query results display
-│   │       ├── SQLExplainer.jsx  ← SQL + plain English explanation
-│   │       ├── History.jsx       ← Query history sidebar
-│   │       ├── Suggestions.jsx   ← Starter question chips
-│   │       └── SchemaExplorer.jsx← Database schema side panel
-│   └── package.json
-│
-└── database/
-    └── setup.sql         ← All 10 tables + realistic Indian retail sample data
-```
-
----
-
-## 👨‍💻 Built By
-
-MCA project — QuickKart Analytics demonstrates full-stack development with AI integration for real-world retail analytics use cases.
+| Category | Initial Implementation | Refined Production Pattern |
+| :--- | :--- | :--- |
+| **Database Access** | Read-write SQLite connection for all queries | Read-only connection (`mode=ro`) with separate audit connection |
+| **SQL Validation** | Basic `.startswith("SELECT")` prefix check | Strict single-statement enforcement and mutation keyword blocking |
+| **Semantic Handling** | Raw SQL output without explanation of intent | Stated business assumptions displayed under results in the UI |
+| **Error Handling** | Unhandled 500 error on query execution failure | 1-attempt self-healing retry followed by friendly error messages |
+| **Test Verification** | No automated tests | Automated unit tests validating safety guardrails and read-only behavior |
+| **Documentation** | Casual documentation with emojis | Professional documentation with architecture diagram and schema reference |

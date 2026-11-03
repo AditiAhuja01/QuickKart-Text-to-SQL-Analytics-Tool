@@ -14,7 +14,7 @@ export default function Suggestions({ onSelect }) {
 
   return (
     <div className="suggestions-section">
-      <p className="suggestions-label">✨ Try asking</p>
+      <p className="suggestions-label"> Try asking</p>
       <div className="suggestions-grid">
         {suggestions.map((s, i) => (
           <button
