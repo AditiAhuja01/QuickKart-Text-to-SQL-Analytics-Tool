@@ -4,6 +4,19 @@ A self-serve Text-to-SQL analytics platform that translates natural language bus
 
 ---
 
+## Application Interface
+
+### Operational Search Interface & Suggested Inquiries
+![QuickKart Home](https://github.com/user-attachments/assets/1df59196-8865-42e6-88af-c478ed199178)
+
+### Synthesized SQL, Business Assumptions & Results Table
+![SQL Generated](https://github.com/user-attachments/assets/f2c262a1-994a-40a1-8542-d53172b66a89)
+
+### Schema Explorer & Historical Query Audit Trail
+![SQL Explanation](https://github.com/user-attachments/assets/e1cb824d-f4a6-4589-9885-1c76a4d82608)
+
+---
+
 ## 1. Business Problem & Product Context
 
 ### The Operational Bottleneck
